@@ -24,25 +24,25 @@ Track live market data, analyze stocks, and calculate hypothetical investment re
 ## How To Run
 
 1. Clone the repository
-'''
+```
    git clone https://github.com/MustafaSBny/stock-dashboard.git
-'''
+```
 
 2. Create and activate virtual environment
-'''
+```
    python -m venv venv
    source venv/bin/activate
-'''
+```
 
 3. Install dependencies
-'''
+```
    pip install -r requirements.txt
-'''
+```
 
 4. Run the app
-'''
+```
    streamlit run app.py
-'''
+```
 
 ## Project Structure
 - app.py — Main Streamlit application and page routing
