@@ -1,5 +1,6 @@
 import yfinance as yf
 import pandas as pd
+import time
 
 def get_stock_history(ticker, period="1y"):
     stock = yf.Ticker(ticker)
@@ -17,17 +18,21 @@ def get_stock_info(ticker):
         "52_week_low": info.get("fiftyTwoWeekLow", "N/A"),
     }
 
-def get_current_price(ticker):
-    stock = yf.Ticker(ticker)
-    history = stock.history(period="2d")
-    if len(history) >= 2:
-        current = history['Close'].iloc[-1]
-        previous = history['Close'].iloc[-2]
-        change = current - previous
-        change_pct = (change / previous) * 100
-        return round(current, 2), round(change_pct, 2)
+def get_current_price(ticker, retries=3):
+    for attempt in range(retries):
+        try:
+            stock = yf.Ticker(ticker)
+            history = stock.history(period="2d")
+            if len(history) >= 2:
+                current = history['Close'].iloc[-1]
+                previous = history['Close'].iloc[-2]
+                change_pct = ((current - previous) / previous) * 100
+                return round(current, 2), round(change_pct, 2)
+        except Exception:
+            pass
+        time.sleep(0.3)
     return None, None
-
+    
 def get_popular_stocks_data():
     tickers = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META"]
     names = {

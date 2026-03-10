@@ -1,6 +1,7 @@
 import streamlit as st
 from data import get_stock_history, get_stock_info, get_current_price, get_popular_stocks_data
 from charts import index_chart, price_chart
+import time
 
 st.set_page_config(
     page_title="Stock Dashboard",
@@ -55,6 +56,19 @@ st.markdown("""
         /* Hide Streamlit top header bar */
         header[data-testid="stHeader"] {
             display: none !important;
+        }
+        /* Fade animation for updating values */
+        @keyframes fadeRefresh {
+            0% { opacity: 0.3; }
+            100% { opacity: 1; }
+        }
+
+        /* Catch everything */
+        [data-testid="stMarkdown"],
+        [data-testid="stMarkdown"] *,
+        [data-testid="stImage"],
+        .block-container * {
+            animation: fadeRefresh 0.8s ease-in-out;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -243,6 +257,9 @@ if st.session_state.page == 'home':
                 {stocks_html}
             </div>
         """, unsafe_allow_html=True)
+
+    time.sleep(15)
+    st.rerun()
 
 elif st.session_state.page == 'detail':
     st.button("← Back", on_click=lambda: setattr(st.session_state, 'page', 'home'))
