@@ -2,6 +2,17 @@ import streamlit as st
 from data import get_stock_history, get_stock_info, get_current_price, get_popular_stocks_data
 from charts import index_chart, price_chart
 import time
+from data import get_stock_history, get_stock_info, get_current_price, get_popular_stocks_data, search_stocks
+import datetime
+import plotly.graph_objects as go
+
+# Handle search navigation
+params = st.query_params
+if "stock" in params:
+    st.session_state.page = "detail"
+    st.session_state.selected_stock = params["stock"]
+    st.query_params.clear()
+    st.rerun()
 
 st.set_page_config(
     page_title="Stock Dashboard",
@@ -51,7 +62,7 @@ st.markdown("""
         }
         /* Tighten gap between top bar and divider */
         div[data-testid="stHorizontalBlock"] {
-        margin-bottom: -65px;
+        margin-bottom: -20px;
         }
         /* Hide Streamlit top header bar */
         header[data-testid="stHeader"] {
@@ -68,7 +79,16 @@ st.markdown("""
         [data-testid="stMarkdown"] *,
         [data-testid="stImage"],
         .block-container * {
-            animation: fadeRefresh 0.8s ease-in-out;
+            animation: fadeRefresh 0.4s ease-in-out;
+        }
+        .search-results [data-testid="stButton"] button {
+            background: #1a1a1a !important;
+            border: none !important;
+            border-bottom: 1px solid #222 !important;
+            border-radius: 0 !important;
+            width: 100% !important;
+            text-align: left !important;
+            padding: 10px 16px !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -184,18 +204,28 @@ with col1:
              style="height:120px; width:auto; margin-top:-60px;">
     """, unsafe_allow_html=True)
 with col2:
-    search = st.text_input("", placeholder="Search stocks or companies...", label_visibility="collapsed")
+    search = st.text_input("", placeholder="Search stocks or companies...", label_visibility="collapsed", key="search_input")
+
+    if search and st.session_state.page == "home":
+        results = search_stocks(search)
+        if results:
+            st.markdown('<div class="search-results">', unsafe_allow_html=True)
+            for r in results:
+                if st.button(f"**{r['ticker']}**  {r['name']}", key=f"result_{r['ticker']}"):
+                    st.session_state.page = "detail"
+                    st.session_state.selected_stock = r['ticker']
+                    st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 with col3:
     st.write("")
 
-st.divider()
 
 # --- Popular Stocks Data (defined here, before columns) ---
 popular = get_popular_stocks_data()
 
 # --- Page Routing ---
 if st.session_state.page == 'home':
-
+    st.divider()
     main, sidebar = st.columns([2.5, 1])
 
     with main:
@@ -258,10 +288,132 @@ if st.session_state.page == 'home':
             </div>
         """, unsafe_allow_html=True)
 
-    time.sleep(15)
+    time.sleep(25)
     st.rerun()
 
-elif st.session_state.page == 'detail':
-    st.button("← Back", on_click=lambda: setattr(st.session_state, 'page', 'home'))
-    st.subheader(f"Detail view for {st.session_state.selected_stock}")
-    st.write("Chart and details coming soon...")
+elif st.session_state.page == "detail":
+    ticker = st.session_state.selected_stock
+    price, change = get_current_price(ticker)
+    info = get_stock_info(ticker)
+    if price is None: price, change = 0, 0
+    if info is None: info = {"name": ticker, "sector": "N/A", "market_cap": "N/A", "pe_ratio": "N/A", "52_week_high": "N/A", "52_week_low": "N/A", "volume": "N/A"}
+
+    color = "#00C896" if change >= 0 else "#FF4444"
+    arrow = "▲" if change >= 0 else "▼"
+
+    # --- Header ---
+    h1, h2, h3 = st.columns([0.5, 4, 1])
+    with h1:
+        if st.button("← Back"):
+            st.session_state.page = "home"
+            st.rerun()
+    with h2:
+        st.markdown(f"""
+            <div style="display:flex; align-items:center; gap:16px; padding-top:6px;">
+                <span style="font-size:22px; font-weight:700;">{ticker}</span>
+                <span style="color:gray; font-size:16px;">{info['name']}</span>
+                <span style="font-size:22px; font-weight:700;">${price:,.2f}</span>
+                <span style="color:{color}; font-size:16px;">{arrow} {abs(change):.2f}%</span>
+            </div>
+        """, unsafe_allow_html=True)
+    with h3:
+        if st.button("+ Watchlist"):
+            if ticker not in st.session_state.watchlist:
+                st.session_state.watchlist.append(ticker)
+                st.success(f"{ticker} added to watchlist")
+
+    st.markdown("---")
+
+    # --- Period Selector ---
+    period_options = {"1D": "1d", "1W": "1w", "1M": "1m", "1Y": "1y"}
+    selected_period = st.radio("", list(period_options.keys()), horizontal=True, label_visibility="collapsed")
+    history = get_stock_history(ticker, period_options[selected_period])
+
+    # --- Main Layout ---
+    left, right = st.columns([3, 1])
+
+    with left:
+        if history is not None and not history.empty:
+            prices = history["Close"].dropna()
+            is_positive = prices.iloc[-1] >= prices.iloc[0]
+            line_color = "#00C896" if is_positive else "#FF4444"
+            fill_color = "rgba(0,200,150,0.1)" if is_positive else "rgba(255,68,68,0.1)"
+
+            y_min = prices.min() * 0.995
+            y_max = prices.max() * 1.005
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=history.index,
+                y=prices,
+                fill="tozeroy",
+                fillcolor=fill_color,
+                line=dict(color=line_color, width=2),
+                name=ticker
+            ))
+            fig.update_layout(
+                    margin=dict(l=0, r=0, t=0, b=0),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    xaxis=dict(showgrid=False, tickfont=dict(color="gray", size=10)),
+                    yaxis=dict(
+                        showgrid=False, 
+                        side="right", 
+                        tickfont=dict(color="gray", size=10), 
+                        tickformat=",.2f",
+                        range=[y_min, y_max]
+                    ),
+                    height=350,
+                    showlegend=False,
+                    dragmode="zoom"
+            )
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.error("Could not load chart data.")
+
+    with right:
+        def fmt(val, prefix="", suffix=""):
+            if val == "N/A" or val is None: return "N/A"
+            if isinstance(val, float): return f"{prefix}{val:,.2f}{suffix}"
+            if isinstance(val, int): return f"{prefix}{val:,}{suffix}"
+            return str(val)
+
+        def fmt_mcap(val):
+            if val == "N/A" or val is None: return "N/A"
+            if val >= 1_000_000_000_000: return f"${val/1_000_000_000_000:.2f}T"
+            if val >= 1_000_000_000: return f"${val/1_000_000_000:.2f}B"
+            if val >= 1_000_000: return f"${val/1_000_000:.2f}M"
+            return f"${val:,}"
+
+        st.markdown(f"""
+            <div style="background:#141414; border:1px solid #333; border-radius:12px; padding:20px; display:flex; flex-direction:column; gap:14px;">
+                <div><span style="color:gray;font-size:12px;">MARKET CAP</span><br><span style="font-size:16px;font-weight:600;">{fmt_mcap(info['market_cap'])}</span></div>
+                <div><span style="color:gray;font-size:12px;">P/E RATIO</span><br><span style="font-size:16px;font-weight:600;">{fmt(info['pe_ratio'])}</span></div>
+                <div><span style="color:gray;font-size:12px;">52W HIGH</span><br><span style="font-size:16px;font-weight:600;">{fmt(info['52_week_high'], "$")}</span></div>
+                <div><span style="color:gray;font-size:12px;">52W LOW</span><br><span style="font-size:16px;font-weight:600;">{fmt(info['52_week_low'], "$")}</span></div>
+                <div><span style="color:gray;font-size:12px;">VOLUME</span><br><span style="font-size:16px;font-weight:600;">{fmt(info['volume'])}</span></div>
+                <div style="margin-top:10px;padding-top:14px;border-top:1px solid #333;"><span style="color:gray;font-size:12px;">🔮 PREDICTION MODEL</span><br><span style="color:#555;font-size:13px;">Coming in Phase 2</span></div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # --- Investment Calculator ---
+    st.markdown("### 💰 Hypothetical Investment Calculator")
+    calc1, calc2 = st.columns(2)
+    with calc1:
+        amount = st.number_input("Amount Invested ($)", min_value=1.0, value=1000.0, step=100.0)
+    with calc2:
+        start_date = st.date_input("Start Date", value=datetime.date(2020, 1, 1))
+
+    if st.button("Calculate"):
+        from calculations import calculate_investment
+        result = calculate_investment(ticker, amount, str(start_date))
+        if result:
+            r1, r2, r3 = st.columns(3)
+            with r1:
+                st.metric("Current Value", f"${result['current_value']:,.2f}")
+            with r2:
+                st.metric("Profit / Loss", f"${result['profit']:,.2f}")
+            with r3:
+                st.metric("Total Return", f"{result['total_return']:.2f}%")

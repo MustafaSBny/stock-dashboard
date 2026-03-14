@@ -2,21 +2,57 @@ import yfinance as yf
 import pandas as pd
 import time
 
-def get_stock_history(ticker, period="1y"):
-    stock = yf.Ticker(ticker)
-    return stock.history(period=period)
+def get_stock_history(ticker, period="1d"):
+    try:
+        stock = yf.Ticker(ticker)
+        if period == "1d":
+            history = stock.history(period="1d", interval="5m")
+        elif period == "1w":
+            history = stock.history(period="5d", interval="15m")
+        elif period == "1m":
+            history = stock.history(period="1mo", interval="1d")
+        elif period == "1y":
+            history = stock.history(period="1y", interval="1d")
+        return history
+    except Exception:
+        return None
 
 def get_stock_info(ticker):
-    stock = yf.Ticker(ticker)
-    info = stock.info
-    return {
-        "name": info.get("longName", ticker),
-        "sector": info.get("sector", "N/A"),
-        "market_cap": info.get("marketCap", "N/A"),
-        "pe_ratio": info.get("trailingPE", "N/A"),
-        "52_week_high": info.get("fiftyTwoWeekHigh", "N/A"),
-        "52_week_low": info.get("fiftyTwoWeekLow", "N/A"),
-    }
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        return {
+            "name": info.get("longName", ticker),
+            "sector": info.get("sector", "N/A"),
+            "market_cap": info.get("marketCap", "N/A"),
+            "pe_ratio": info.get("trailingPE", "N/A"),
+            "52_week_high": info.get("fiftyTwoWeekHigh", "N/A"),
+            "52_week_low": info.get("fiftyTwoWeekLow", "N/A"),
+            "volume": info.get("volume", "N/A"),
+        }
+    except Exception:
+        return None
+
+def search_stocks(query):
+    if not query or len(query)< 1:
+        return []
+    try:
+        ticker = yf.Ticker(query)
+        search = yf.Search(query, max_results=6)
+        results = []
+        for quote in search.quotes:
+            if 'symbol' in quote and ('longname' in quote or 'shortname' in quote):
+                ticker = quote.get("symbol", "")
+                if "." not in ticker:  # filter out foreign exchange tickers
+                    results.append({
+                        "ticker": ticker,
+                        "name": quote.get("longname") or quote.get("shortname", "")
+            })
+            if len(results) >= 5:
+                break
+        return results
+    except Exception:
+        return []
 
 def get_current_price(ticker, retries=3):
     for attempt in range(retries):
